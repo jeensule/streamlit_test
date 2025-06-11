@@ -2,7 +2,9 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 from datetime import datetime
+import time  # ✅ Required for time.sleep()
 
+# Show spinner with loading delay
 with st.spinner("⏳ Waking up the app, please wait..."):
     time.sleep(2)  # Simulate loading time
 
