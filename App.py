@@ -10,12 +10,13 @@ with st.spinner("⏳ Waking up the app, please wait..."):
 
 # === Load Data ===
 @st.cache_data
+@st.cache_data
 def load_data():
     df = pd.read_excel("Data.xlsx")
+    df.columns = df.columns.str.strip()
     columns_to_drop = ["Previous_Month_Price", "Price_Change", "Fact_ID"]
-    df = df.drop(columns=columns_to_drop)
-    df = df[df['Group_Name_x'] != "APPLE_BB"]
-    df = df[df['Product_ID'].isin(df['Product_ID'].value_counts()[lambda x: x > 2].index)]
+    df = df.drop(columns=columns_to_drop, errors="ignore")
+    return df
 
     # Manual override for main group categories
     def map_main_group(name):
