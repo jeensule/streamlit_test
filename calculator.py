@@ -2,56 +2,18 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 from datetime import datetime
-import time
 
-# Show loading spinner while app starts
-with st.spinner(" Waking up the app, please wait..."):
-    time.sleep(2)
+with st.spinner("⏳ Waking up the app, please wait..."):
+    time.sleep(2)  # Simulate loading time
 
+# === Load Data ===
 @st.cache_data
 def load_data():
     df = pd.read_excel("Data.xlsx")
-    df.columns = df.columns.str.strip()
-
-    # Drop columns if they exist
     columns_to_drop = ["Previous_Month_Price", "Price_Change", "Fact_ID"]
-    df = df.drop(columns=[col for col in columns_to_drop if col in df.columns], errors="ignore")
-
-    # Ensure essential columns exist
-    required_cols = ["Group_Name_x", "Brand_x", "Product_ID"]
-    missing = [col for col in required_cols if col not in df.columns]
-    if missing:
-        st.error(f"❌ Missing required columns in Data.xlsx: {missing}")
-        st.stop()
-
-    # Remove APPLE_BB group if present
-    if "APPLE_BB" in df["Group_Name_x"].values:
-        df = df[df["Group_Name_x"] != "APPLE_BB"]
-
-    # Keep products with more than 2 records
+    df = df.drop(columns=columns_to_drop)
+    df = df[df['Group_Name_x'] != "APPLE_BB"]
     df = df[df['Product_ID'].isin(df['Product_ID'].value_counts()[lambda x: x > 2].index)]
-
-    # Map to main group
-    def map_main_group(name):
-        if isinstance(name, str):
-            name_upper = name.upper()
-            if name_upper.startswith("PC_"):
-                return "PC"
-            elif name_upper.startswith("BB_"):
-                return "BB"
-            elif "SMARTPHONE" in name_upper:
-                return "SMARTPHONE"
-            elif "TABLET" in name_upper:
-                return "TABLET"
-            else:
-                return name.split()[0]
-        return name
-
-    df["Main_Group"] = df["Group_Name_x"].apply(map_main_group)
-    return df
-
-# Load data
-assets = load_data()
 
     # Manual override for main group categories
     def map_main_group(name):
@@ -75,7 +37,7 @@ assets = load_data()
 assets = load_data()
 
 # === Sidebar UI ===
-st.sidebar.header("📂 Asset Filter")
+st.sidebar.header(" Asset Filter")
 
 main_group = st.sidebar.selectbox("Main Group", sorted(assets['Main_Group'].dropna().unique()))
 
@@ -84,7 +46,7 @@ subcategory_options = sorted(assets[assets["Main_Group"] == main_group]["Group_N
 subcategory_options = ["All"] + subcategory_options
 group = st.sidebar.selectbox("Subcategory", subcategory_options)
 
-
+# Filter by Main Group and optionally Subcategory
 if group != "All":
     group_filtered_assets = assets[assets["Group_Name_x"] == group]
 else:
@@ -106,7 +68,7 @@ filtered_assets = filtered_assets[filtered_assets['Year_Available'].between(star
 product_options = sorted(filtered_assets["Product_Name_x"].dropna().unique())
 product = st.sidebar.selectbox("Product", product_options) if product_options else None
 
-
+# Narrow to selected product
 if product:
     matching_assets = filtered_assets[filtered_assets["Product_Name_x"] == product]
 else:
@@ -169,7 +131,7 @@ if st.button("Run Depreciation Forecast"):
         df = df[df["Date"] >= release_date].sort_values("Date")
 
         if df.empty:
-            st.warning(" No records after selected release date.")
+            st.warning("⚠️ No records after selected release date.")
         else:
             df["Original_Price"] = orig_price
             df["Depreciation_NOK"] = orig_price - df["Current_Month_Price"]
@@ -224,7 +186,7 @@ if st.button("Run Depreciation Forecast"):
             df["Best_%"] = 100 * (df["Best_Case"] / orig_price)
             df["Worst_%"] = 100 * (df["Worst_Case"] / orig_price)
 
-            st.subheader(" Depreciation Table")
+            st.subheader("📄 Depreciation Table")
             df["Year-Month"] = df["Date"].dt.strftime("%Y-%m")
             depreciation_table = df[["Year-Month", "Months_Since_Release", "Current_Month_Price", "Depreciation_%", "Depreciation_NOK"]].round(2)
             st.dataframe(depreciation_table)
@@ -245,14 +207,14 @@ if st.button("Run Depreciation Forecast"):
             st.dataframe(scenario_df)
 
             # Scenario Forecasts Graph
-            st.subheader(" Residual Recommendations by Month")
+            st.subheader("📈 Residual Recommendations by Month")
             fig3 = px.line(df, x="Months_Since_Release", y=["Expected_%", "Best_%", "Worst_%"],
                            title="Residual Scenario Forecasts (%)", markers=True)
             fig3.update_layout(xaxis_title="Months Since Release", yaxis_title="Residual %")
             st.plotly_chart(fig3)
 
             # Lorenz-style Depreciation Curve
-            st.subheader(" Marginal Cumulative Rate of Depreciation (Lorenz-style)")
+            st.subheader("📉 Marginal Cumulative Rate of Depreciation (Lorenz-style)")
             df_lorenz = df.sort_values("Months_Since_Release").copy()
             df_lorenz["Cumulative_Depreciation"] = df_lorenz["Depreciation_NOK"].cumsum()
             df_lorenz["Cumulative_Depreciation_%"] = 100 * df_lorenz["Cumulative_Depreciation"] / df_lorenz["Depreciation_NOK"].sum()
@@ -275,7 +237,7 @@ if st.button("Run Depreciation Forecast"):
             st.plotly_chart(fig_lorenz)
 
     except ValueError:
-        st.error(" Invalid date format. Please use YYYY-MM.")
+        st.error("❌ Invalid date format. Please use YYYY-MM.")
 
 
 
