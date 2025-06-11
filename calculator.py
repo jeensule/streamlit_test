@@ -2,20 +2,35 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 from datetime import datetime
+import time
 
-with st.spinner("⏳ Waking up the app, please wait..."):
-    time.sleep(2)  # Simulate loading time
+# Show loading spinner while app starts
+with st.spinner("Waking up the app, please wait..."):
+    time.sleep(2)
 
-# === Load Data ===
 @st.cache_data
 def load_data():
     df = pd.read_excel("Data.xlsx")
+    df.columns = df.columns.str.strip()
+
+    # Drop columns if they exist
     columns_to_drop = ["Previous_Month_Price", "Price_Change", "Fact_ID"]
-    df = df.drop(columns=columns_to_drop)
-    df = df[df['Group_Name_x'] != "APPLE_BB"]
+    df = df.drop(columns=[col for col in columns_to_drop if col in df.columns], errors="ignore")
+
+    # Ensure essential columns exist
+    required_cols = ["Group_Name_x", "Brand_x", "Product_ID"]
+    missing = [col for col in required_cols if col not in df.columns]
+    if missing:
+        st.error(f"❌ Missing required columns in Data.xlsx: {missing}")
+        st.stop()
+
+    # Remove unwanted group
+    df = df[df["Group_Name_x"] != "APPLE_BB"]
+
+    # Keep only products with more than 2 records
     df = df[df['Product_ID'].isin(df['Product_ID'].value_counts()[lambda x: x > 2].index)]
 
-    # Manual override for main group categories
+    # Map to Main_Group
     def map_main_group(name):
         if isinstance(name, str):
             name_upper = name.upper()
@@ -34,6 +49,7 @@ def load_data():
     df["Main_Group"] = df["Group_Name_x"].apply(map_main_group)
     return df
 
+# Load data once
 assets = load_data()
 
 # === Sidebar UI ===
