@@ -18,6 +18,14 @@ def load_data():
     columns_to_drop = ["Previous_Month_Price", "Price_Change", "Fact_ID"]
     df = df.drop(columns=[col for col in columns_to_drop if col in df.columns], errors="ignore")
 
+    # Rename to match expected names
+    df.rename(columns={
+        "Group_Name": "Group_Name_x",
+        "Brand": "Brand_x",
+        "Product_Name": "Product_Name_x",
+        "Year Available": "Year_Available"
+    }, inplace=True)
+
     # Ensure required columns are present
     required_cols = ["Group_Name_x", "Brand_x", "Product_ID"]
     missing = [col for col in required_cols if col not in df.columns]
@@ -29,7 +37,7 @@ def load_data():
     df = df[df["Group_Name_x"] != "APPLE_BB"]
     df = df[df["Product_ID"].isin(df["Product_ID"].value_counts()[lambda x: x > 2].index)]
 
-    # Map to main group
+    #  Ensure proper indentation here:
     def map_main_group(name):
         if isinstance(name, str):
             name_upper = name.upper()
@@ -41,6 +49,8 @@ def load_data():
                 return "SMARTPHONE"
             elif "TABLET" in name_upper:
                 return "TABLET"
+            elif "LAPTOP" in name_upper:
+                return "Laptop"
             else:
                 return name.split()[0]
         return name
@@ -48,11 +58,11 @@ def load_data():
     df["Main_Group"] = df["Group_Name_x"].apply(map_main_group)
     return df
 
-# === Load dataset ===
+
 assets = load_data()
 
 
-# === Sidebar UI ===
+
 st.sidebar.header(" Asset Filter")
 
 main_group = st.sidebar.selectbox("Main Group", sorted(assets['Main_Group'].dropna().unique()))
@@ -124,13 +134,13 @@ if storage != "All" and storage != "N/A":
     matching_assets = matching_assets[matching_assets["Storage"] == storage]
 
 # === Main Section ===
-st.title("\U0001F4C8 Long Term Asset Depreciation")
+st.title(" Long Term Asset Depreciation")
 
 orig_price = st.number_input("Original Price (NOK)", value=10000.0)
 release_date_str = st.text_input("Release Date (YYYY-MM)", value="2021-01")
 
 # Risk Analysis Inputs
-st.subheader("\U0001F4CA Historical Customer Category Returns")
+st.subheader(" Historical Customer Category Returns")
 risk_analysis_a = st.number_input("Grade A %", value=0.25)
 risk_analysis_b = st.number_input("Grade B %", value=0.25)
 risk_analysis_c = st.number_input("Grade C %", value=0.25)
@@ -173,7 +183,7 @@ if st.button("Run Depreciation Forecast"):
             # Expected Case
             df["Expected_Residual"] = df["Current_Month_Price"] * (a * a_factor + b * b_factor + c * c_factor + d * d_factor)
 
-            # Best Case (favor A/B more)
+            # Best Case  or Full Damage Billing
             a_b = a + 0.1
             b_b = b + 0.05
             c_b = max(c - 0.075, 0)
@@ -196,41 +206,63 @@ if st.button("Run Depreciation Forecast"):
             c_w /= total_w
             d_w /= total_w
             df["Worst_Case"] = df["Current_Month_Price"] * (a_w * a_factor + b_w * b_factor + c_w * c_factor + d_w * d_factor)
+            # Medium Damage Billing (Customer pays only for C and D)
 
+            c_d_total = c + d
+            c_adj = c / c_d_total
+            d_adj = d / c_d_total
+            df["Medium_Damage_Billing"] = df["Current_Month_Price"] * (c_adj * c_factor + d_adj * d_factor)
+            df["Medium_%"] = 100 * df["Medium_Damage_Billing"] / orig_price
+
+            grade_factors = {'A': 0.90, 'B': 0.75, 'C': 0.60, 'D': 0.00}
+            expected = (a * grade_factors['A'] + b * grade_factors['B'] + c * grade_factors['C'] + d * grade_factors['D'])
+            # No Damage Billing (customer pays nothing, company absorbs all risk)
+            # Use conservative approach — e.g., 20–30% below Expected Residual
+            no_damage_factor = expected * 0.85  # Example: reduce residual value to account for risk
+            df["No_Damage_Billing"] = df["Current_Month_Price"] * no_damage_factor
             # Residual Percent
             df["Expected_%"] = 100 * (df["Expected_Residual"] / orig_price)
             df["Best_%"] = 100 * (df["Best_Case"] / orig_price)
             df["Worst_%"] = 100 * (df["Worst_Case"] / orig_price)
+            df["No_Damage_%"] = 100 * (df["No_Damage_Billing"] / orig_price)
+            df["Medium_%"] = 100 * (df["Medium_Damage_Billing"] / orig_price)
 
-            st.subheader("📄 Depreciation Table")
+            st.subheader(" Depreciation Table")
             df["Year-Month"] = df["Date"].dt.strftime("%Y-%m")
             depreciation_table = df[["Year-Month", "Months_Since_Release", "Current_Month_Price", "Depreciation_%", "Depreciation_NOK"]].round(2)
             st.dataframe(depreciation_table)
 
-            st.subheader("📊 Residual Scenarios Table")
+            st.subheader(" Residual Scenarios Table")
             scenario_df = df[[
                 "Months_Since_Release",
-                "Current_Month_Price",
                 "Expected_%",
-                "Best_%",
-                "Worst_%"
+                "Medium_%",
+                "No_Damage_%",
+                
             ]].rename(columns={
-                "Current_Month_Price": "Actual Asset Value (INREGO)",
-                "Expected_%": "Expected Risk",
+                "Expected_%": "Expected Case (Weighted A–D)",
+                "Medium_%": "Medium Damage Billing",
                 "Best_%": "Full Damage Billing",
-                "Worst_%": "Medium Damage Billing"
+                "No_Damage_%": "No Damage Billing"
             }).round(2)
             st.dataframe(scenario_df)
 
             # Scenario Forecasts Graph
-            st.subheader("📈 Residual Recommendations by Month")
+            st.subheader(" Residual Recommendations by Month")
             fig3 = px.line(df, x="Months_Since_Release", y=["Expected_%", "Best_%", "Worst_%"],
                            title="Residual Scenario Forecasts (%)", markers=True)
             fig3.update_layout(xaxis_title="Months Since Release", yaxis_title="Residual %")
+        #New graph
             st.plotly_chart(fig3)
+            fig4 = px.line(df, x="Months_Since_Release",
+               y=["Expected_%", "Medium_%", "Best_%", "Worst_%"],
+               title="Residual Forecasts by Agreement Type",
+               markers=True)
+            fig4.update_layout(xaxis_title="Months Since Release", yaxis_title="Residual %")
+            st.plotly_chart(fig4)
 
             # Lorenz-style Depreciation Curve
-            st.subheader("📉 Marginal Cumulative Rate of Depreciation (Lorenz-style)")
+            st.subheader(" Marginal Cumulative Rate of Depreciation (Lorenz-style)")
             df_lorenz = df.sort_values("Months_Since_Release").copy()
             df_lorenz["Cumulative_Depreciation"] = df_lorenz["Depreciation_NOK"].cumsum()
             df_lorenz["Cumulative_Depreciation_%"] = 100 * df_lorenz["Cumulative_Depreciation"] / df_lorenz["Depreciation_NOK"].sum()
@@ -253,7 +285,7 @@ if st.button("Run Depreciation Forecast"):
             st.plotly_chart(fig_lorenz)
 
     except ValueError:
-        st.error("❌ Invalid date format. Please use YYYY-MM.")
+        st.error(" Invalid date format. Please use YYYY-MM.")
 
 
 
